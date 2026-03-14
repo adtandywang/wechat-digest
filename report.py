@@ -1,0 +1,496 @@
+"""
+WeChat Digest - Report Generator
+Generates HTML reports from fetched articles with feed health indicators.
+"""
+
+import json
+import logging
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+from fetcher import Article
+
+logger = logging.getLogger(__name__)
+
+STRINGS = {
+    "zh": {
+        "title": "微信公众号摘要",
+        "subtitle": "自动聚合 · 不再遗漏",
+        "period_1": "过去 1 天",
+        "period_7": "过去 7 天",
+        "period_30": "过去 30 天",
+        "articles_count": "篇文章",
+        "accounts_count": "个公众号",
+        "no_articles": "该时间段内暂无文章",
+        "generated_at": "生成于",
+        "high": "高",
+        "medium": "中",
+        "low": "低",
+        "all_tags": "全部",
+        "all_accounts": "全部公众号",
+        "read_article": "阅读原文",
+        "new_badge": "新",
+        "stale_warning": "以下公众号近期无更新，RSS源可能异常：",
+        "new_since_last": "篇新文章(本次更新)",
+    },
+    "en": {
+        "title": "WeChat Digest",
+        "subtitle": "Auto-aggregated · Never miss a post",
+        "period_1": "Past 1 Day",
+        "period_7": "Past 7 Days",
+        "period_30": "Past 30 Days",
+        "articles_count": "articles",
+        "accounts_count": "accounts",
+        "no_articles": "No articles in this period",
+        "generated_at": "Generated at",
+        "high": "High",
+        "medium": "Medium",
+        "low": "Low",
+        "all_tags": "All",
+        "all_accounts": "All accounts",
+        "read_article": "Read original",
+        "new_badge": "NEW",
+        "stale_warning": "These accounts had no recent updates — RSS feed may be broken:",
+        "new_since_last": "new articles (this run)",
+    },
+}
+
+
+def _filter_by_period(articles: list[Article], days: int) -> list[Article]:
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    return [a for a in articles if a.published >= cutoff]
+
+
+def _get_strings(config: dict) -> dict:
+    lang = config.get("language", "zh")
+    return STRINGS.get(lang, STRINGS["zh"])
+
+
+def _safe_json_for_script(value) -> str:
+    """Serialize JSON safely for embedding in a <script> tag."""
+    text = json.dumps(value, ensure_ascii=False, indent=None)
+    return (
+        text.replace("</", "<\\/")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+    )
+
+
+def _build_stale_accounts(health: dict, config: dict, threshold: int = 3) -> list[dict]:
+    """Identify accounts whose feeds appear broken, stale, or degraded."""
+    accounts_by_id = {a["id"]: a for a in config.get("accounts", [])}
+    problems = []
+    for aid, entry in health.items():
+        acc = accounts_by_id.get(aid, {})
+        if not acc.get("rss_url"):
+            continue
+
+        status = entry.get("status", "ok")
+        item = {
+            "name": acc.get("name", aid),
+            "id": aid,
+            "priority": acc.get("priority", "medium"),
+            "empty_runs": entry.get("consecutive_empty", 0),
+            "last_error": entry.get("last_error", ""),
+            "status": status,
+            "entries_skipped": entry.get("entries_skipped", 0),
+        }
+
+        if entry.get("consecutive_empty", 0) >= threshold:
+            item["warning_type"] = "stale"
+            problems.append(item)
+        elif status == "degraded":
+            item["warning_type"] = "degraded"
+            problems.append(item)
+
+    # Sort: high priority first, then stale before degraded
+    problems.sort(key=lambda x: (
+        x["priority"] != "high",
+        x["warning_type"] != "stale",
+        x["name"],
+    ))
+    return problems
+
+
+def generate_html(
+    articles: list[Article],
+    config: dict,
+    health: dict | None = None,
+) -> str:
+    """Generate a single-page HTML report with filtering, new-badges, and health warnings."""
+    s = _get_strings(config)
+    periods = config.get("report_periods", [1, 7, 30])
+    now = datetime.now(timezone.utc)
+    health = health or {}
+
+    period_data = {}
+    all_tags = set()
+    all_accounts = set()
+    for days in periods:
+        filtered = _filter_by_period(articles, days)
+        period_data[days] = filtered
+        for a in filtered:
+            all_tags.update(a.tags)
+            all_accounts.add(a.account_name)
+
+    all_tags_sorted = sorted(all_tags)
+    all_accounts_sorted = sorted(all_accounts)
+    max_period = max(periods) if periods else 30
+    embed_articles = _filter_by_period(articles, max_period)
+
+    period_labels = {1: s["period_1"], 7: s["period_7"], 30: s["period_30"]}
+    new_count = sum(1 for a in embed_articles if a.is_new)
+    stale_accounts = _build_stale_accounts(health, config)
+
+    html = _TEMPLATE
+    html = html.replace("{{ARTICLES_JSON}}", _safe_json_for_script([a.to_dict() for a in embed_articles]))
+    html = html.replace("{{TAGS_JSON}}", _safe_json_for_script(all_tags_sorted))
+    html = html.replace("{{ACCOUNTS_JSON}}", _safe_json_for_script(all_accounts_sorted))
+    html = html.replace(
+        "{{PERIODS_JSON}}",
+        _safe_json_for_script([
+            {"days": d, "label": period_labels.get(d, f"{d} days"),
+             "count": len(period_data.get(d, []))}
+            for d in periods
+        ]),
+    )
+    html = html.replace("{{STATS_JSON}}", _safe_json_for_script({
+        "total_articles": len(embed_articles),
+        "total_accounts": len(all_accounts),
+        "new_count": new_count,
+        "generated_at": now.strftime("%Y-%m-%d %H:%M UTC"),
+    }))
+    html = html.replace("{{STRINGS}}", _safe_json_for_script(s))
+    html = html.replace("{{STALE_ACCOUNTS_JSON}}", _safe_json_for_script(stale_accounts))
+    return html
+
+
+def save_report(html: str, config: dict, filename: str = "index.html") -> Path:
+    output_dir = Path(config.get("output", {}).get("directory", "output"))
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / filename
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    tmp_path.write_text(html, encoding="utf-8")
+    tmp_path.replace(path)
+    logger.info(f"Report saved to {path}")
+    return path
+
+
+_TEMPLATE = r"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>微信公众号摘要 | WeChat Digest</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-primary: #0a0a0c;
+  --bg-card: #131318;
+  --bg-card-hover: #1a1a22;
+  --bg-surface: #0f0f14;
+  --border: #1e1e28;
+  --border-accent: #2d2d3a;
+  --text-primary: #e8e6f0;
+  --text-secondary: #8a879a;
+  --text-muted: #5c596a;
+  --accent-green: #22c55e;
+  --accent-green-dim: rgba(34, 197, 94, 0.12);
+  --accent-amber: #f59e0b;
+  --accent-amber-dim: rgba(245, 158, 11, 0.12);
+  --accent-red: #ef4444;
+  --accent-red-dim: rgba(239, 68, 68, 0.10);
+  --accent-blue: #6366f1;
+  --accent-blue-dim: rgba(99, 102, 241, 0.12);
+  --radius: 10px;
+  --font-sans: 'Noto Sans SC', -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* Header */
+.header {
+  padding: 40px 24px 32px;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, #0f0f16 0%, var(--bg-primary) 100%);
+}
+.header h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 4px; }
+.header .subtitle { font-size: 13px; color: var(--text-muted); font-weight: 300; letter-spacing: 2px; text-transform: uppercase; }
+.stats-row {
+  display: flex; justify-content: center; gap: 24px; margin-top: 20px;
+  font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); flex-wrap: wrap;
+}
+.stats-row .stat-num { color: var(--accent-green); font-weight: 500; }
+.stats-row .stat-new { color: var(--accent-amber); font-weight: 500; }
+
+/* Stale warning banner */
+.stale-banner {
+  margin: 0 auto; max-width: 800px; padding: 12px 20px;
+  background: var(--accent-red-dim); border: 1px solid rgba(239,68,68,0.2);
+  border-radius: var(--radius); margin-top: 16px; font-size: 12px;
+  display: none;
+}
+.stale-banner.visible { display: block; }
+.stale-banner .stale-title { color: var(--accent-red); font-weight: 500; margin-bottom: 4px; }
+.stale-banner .stale-item { color: var(--text-secondary); padding: 2px 0; }
+.stale-banner .stale-high { color: var(--accent-red); }
+
+/* Tabs */
+.tabs {
+  display: flex; justify-content: center; gap: 4px; padding: 16px 24px;
+  background: var(--bg-surface); border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 100; backdrop-filter: blur(12px);
+}
+.tab {
+  padding: 8px 20px; border-radius: 20px; font-size: 13px; font-weight: 500;
+  cursor: pointer; border: 1px solid transparent; color: var(--text-secondary);
+  transition: all 0.2s ease; background: transparent; user-select: none;
+}
+.tab:hover { color: var(--text-primary); background: var(--bg-card); }
+.tab.active { color: var(--accent-green); background: var(--accent-green-dim); border-color: rgba(34,197,94,0.2); }
+.tab .count { font-family: var(--font-mono); font-size: 11px; margin-left: 6px; opacity: 0.7; }
+
+/* Filters */
+.filters {
+  display: flex; gap: 8px; padding: 12px 24px; flex-wrap: wrap;
+  justify-content: center; border-bottom: 1px solid var(--border);
+}
+.filter-chip, .account-select {
+  padding: 4px 12px; border-radius: 14px; font-size: 11px;
+  border: 1px solid var(--border); color: var(--text-muted);
+  background: transparent; transition: all 0.15s ease;
+}
+.filter-chip { cursor: pointer; user-select: none; }
+.filter-chip:hover, .account-select:hover { color: var(--text-secondary); border-color: var(--border-accent); }
+.filter-chip.active { color: var(--accent-blue); background: var(--accent-blue-dim); border-color: rgba(99,102,241,0.25); }
+.account-select { background: var(--bg-card); color: var(--text-secondary); cursor: pointer; }
+.filter-new { color: var(--accent-amber) !important; border-color: rgba(245,158,11,0.3) !important; }
+.filter-new.active { background: var(--accent-amber-dim) !important; }
+
+/* Content */
+.content { max-width: 800px; margin: 0 auto; padding: 20px 24px 60px; }
+.empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); font-size: 14px; }
+
+/* Article Card */
+.article-card {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 18px 20px; margin-bottom: 10px; background: var(--bg-card);
+  transition: all 0.2s ease; animation: fadeUp 0.3s ease both;
+}
+.article-card:hover { background: var(--bg-card-hover); border-color: var(--border-accent); transform: translateY(-1px); }
+.article-card.is-new { border-left: 3px solid var(--accent-amber); }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; gap: 12px; }
+.account-name { font-size: 11px; font-weight: 500; color: var(--text-muted); letter-spacing: 0.3px; }
+.card-date { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); }
+.card-title { font-size: 15px; font-weight: 500; line-height: 1.5; margin-bottom: 6px; color: var(--text-primary); }
+.card-title a { color: inherit; text-decoration: none; }
+.card-title a:hover { color: var(--accent-green); }
+.card-summary { font-size: 13px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 10px; }
+.card-footer { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tag { font-size: 10px; padding: 2px 8px; border-radius: 10px; background: var(--accent-blue-dim); color: var(--accent-blue); font-weight: 500; }
+.new-badge {
+  font-size: 9px; padding: 2px 6px; border-radius: 8px; font-weight: 700;
+  background: var(--accent-amber-dim); color: var(--accent-amber);
+  font-family: var(--font-mono); letter-spacing: 0.5px;
+}
+.priority-badge { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 500; font-family: var(--font-mono); }
+.priority-high { background: var(--accent-red-dim); color: var(--accent-red); }
+.priority-medium { background: var(--accent-amber-dim); color: var(--accent-amber); }
+.priority-low { background: rgba(100,100,120,0.1); color: var(--text-muted); }
+.read-link { margin-left: auto; font-size: 11px; color: var(--accent-green); text-decoration: none; font-weight: 500; opacity: 0; transition: opacity 0.15s; }
+.article-card:hover .read-link { opacity: 1; }
+.footer { text-align: center; padding: 24px; font-size: 11px; color: var(--text-muted); border-top: 1px solid var(--border); font-family: var(--font-mono); }
+@media (max-width: 640px) {
+  .header h1 { font-size: 22px; }
+  .content { padding: 16px; }
+  .tabs { gap: 2px; padding: 12px; }
+  .tab { padding: 6px 14px; font-size: 12px; }
+  .read-link { opacity: 1; }
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1 id="page-title"></h1>
+  <div class="subtitle" id="page-subtitle"></div>
+  <div class="stats-row">
+    <span><span class="stat-num" id="stat-articles">0</span> <span id="stat-articles-label"></span></span>
+    <span><span class="stat-new" id="stat-new">0</span> <span id="stat-new-label"></span></span>
+    <span><span class="stat-num" id="stat-accounts">0</span> <span id="stat-accounts-label"></span></span>
+    <span id="stat-time"></span>
+  </div>
+  <div class="stale-banner" id="stale-banner">
+    <div class="stale-title" id="stale-title"></div>
+    <div id="stale-list"></div>
+  </div>
+</div>
+<div class="tabs" id="period-tabs"></div>
+<div class="filters" id="filter-chips"></div>
+<div class="content" id="article-list"></div>
+<div class="footer" id="footer-text"></div>
+<script>
+const ALL_ARTICLES = {{ARTICLES_JSON}};
+const ALL_TAGS = {{TAGS_JSON}};
+const ALL_ACCOUNTS = {{ACCOUNTS_JSON}};
+const PERIODS = {{PERIODS_JSON}};
+const STATS = {{STATS_JSON}};
+const S = {{STRINGS}};
+const STALE_ACCOUNTS = {{STALE_ACCOUNTS_JSON}};
+
+let currentPeriod = PERIODS[0]?.days || 1;
+let activeTag = null;
+let activeAccount = null;
+let showNewOnly = false;
+
+function esc(v) {
+  return String(v ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+function safeUrl(v) {
+  try { const u = new URL(String(v||""), location.href); if (u.protocol==="http:"||u.protocol==="https:") return u.href; } catch(_) {}
+  return "#";
+}
+
+function init() {
+  document.getElementById("page-title").textContent = S.title;
+  document.getElementById("page-subtitle").textContent = S.subtitle;
+  document.getElementById("stat-articles").textContent = STATS.total_articles;
+  document.getElementById("stat-articles-label").textContent = S.articles_count;
+  document.getElementById("stat-new").textContent = STATS.new_count;
+  document.getElementById("stat-new-label").textContent = S.new_since_last;
+  document.getElementById("stat-accounts").textContent = STATS.total_accounts;
+  document.getElementById("stat-accounts-label").textContent = S.accounts_count;
+  document.getElementById("stat-time").textContent = S.generated_at + " " + STATS.generated_at;
+  document.getElementById("footer-text").textContent = "WeChat Digest · " + S.generated_at + " " + STATS.generated_at;
+
+  // Feed health warnings
+  if (STALE_ACCOUNTS.length > 0) {
+    const banner = document.getElementById("stale-banner");
+    banner.classList.add("visible");
+    document.getElementById("stale-title").textContent = S.stale_warning;
+    document.getElementById("stale-list").innerHTML = STALE_ACCOUNTS.map(a => {
+      const cls = a.priority === "high" ? "stale-item stale-high" : "stale-item";
+      let detail = "";
+      if (a.warning_type === "stale") {
+        detail = `${a.empty_runs} runs empty`;
+      } else if (a.warning_type === "degraded") {
+        detail = `${a.entries_skipped} entries skipped (bad date/URL)`;
+      }
+      const hi = a.priority === "high" ? " ⚠ HIGH" : "";
+      return `<div class="${cls}">${esc(a.name)} (${detail}${hi})</div>`;
+    }).join("");
+  }
+
+  document.getElementById("period-tabs").addEventListener("click", e => {
+    const t = e.target.closest("[data-period]");
+    if (!t) return;
+    currentPeriod = Number(t.dataset.period) || currentPeriod;
+    renderTabs(); renderArticles();
+  });
+
+  document.getElementById("filter-chips").addEventListener("click", e => {
+    const t = e.target.closest("[data-filter-kind]");
+    if (!t) return;
+    const kind = t.dataset.filterKind, val = t.dataset.filterValue || "";
+    if (kind === "clear") { activeTag = null; activeAccount = null; showNewOnly = false; }
+    else if (kind === "tag") { activeTag = activeTag === val ? null : val; activeAccount = null; showNewOnly = false; }
+    else if (kind === "account") { activeAccount = activeAccount === val ? null : val; activeTag = null; showNewOnly = false; }
+    else if (kind === "new") { showNewOnly = !showNewOnly; activeTag = null; activeAccount = null; }
+    renderFilters(); renderArticles();
+  });
+
+  renderTabs(); renderFilters(); renderArticles();
+}
+
+function renderTabs() {
+  document.getElementById("period-tabs").innerHTML = PERIODS.map(p => {
+    const cls = p.days === currentPeriod ? "tab active" : "tab";
+    return `<button type="button" class="${cls}" data-period="${p.days}">${esc(p.label)}<span class="count">${p.count}</span></button>`;
+  }).join("");
+}
+
+function renderFilters() {
+  const c = document.getElementById("filter-chips");
+  let h = `<button type="button" class="filter-chip ${!activeTag&&!activeAccount&&!showNewOnly?'active':''}" data-filter-kind="clear">${esc(S.all_tags)}</button>`;
+
+  if (STATS.new_count > 0) {
+    h += `<button type="button" class="filter-chip filter-new ${showNewOnly?'active':''}" data-filter-kind="new">${esc(S.new_badge)} (${STATS.new_count})</button>`;
+  }
+
+  ALL_TAGS.forEach(tag => {
+    h += `<button type="button" class="filter-chip ${activeTag===tag?'active':''}" data-filter-kind="tag" data-filter-value="${esc(tag)}">${esc(tag)}</button>`;
+  });
+
+  if (ALL_ACCOUNTS.length > 3) {
+    h += `<select id="account-select" class="account-select"><option value="">${esc(S.all_accounts)}</option>${ALL_ACCOUNTS.map(a=>`<option value="${esc(a)}" ${activeAccount===a?'selected':''}>${esc(a)}</option>`).join("")}</select>`;
+  } else {
+    ALL_ACCOUNTS.forEach(a => {
+      h += `<button type="button" class="filter-chip ${activeAccount===a?'active':''}" data-filter-kind="account" data-filter-value="${esc(a)}">${esc(a)}</button>`;
+    });
+  }
+  c.innerHTML = h;
+  const sel = document.getElementById("account-select");
+  if (sel) sel.addEventListener("change", e => { activeAccount = e.target.value||null; activeTag=null; showNewOnly=false; renderFilters(); renderArticles(); });
+}
+
+function renderArticles() {
+  const container = document.getElementById("article-list");
+  const cutoff = new Date(Date.now() - currentPeriod * 86400000);
+  let filtered = ALL_ARTICLES.filter(a => new Date(a.published) >= cutoff);
+  if (activeTag) filtered = filtered.filter(a => Array.isArray(a.tags) && a.tags.includes(activeTag));
+  if (activeAccount) filtered = filtered.filter(a => a.account_name === activeAccount);
+  if (showNewOnly) filtered = filtered.filter(a => a.is_new);
+
+  const po = {high:0, medium:1, low:2};
+  filtered.sort((a,b) => {
+    // New articles first within same priority
+    const pa = po[a.priority]??1, pb = po[b.priority]??1;
+    if (pa !== pb) return pa - pb;
+    if (a.is_new !== b.is_new) return a.is_new ? -1 : 1;
+    return new Date(b.published) - new Date(a.published);
+  });
+
+  if (!filtered.length) {
+    container.innerHTML = `<div class="empty-state">${esc(S.no_articles)}</div>`;
+    return;
+  }
+
+  container.innerHTML = filtered.map((a,i) => {
+    const d = new Date(a.published);
+    const ds = d.toLocaleString("zh-CN",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
+    const pri = ["high","medium","low"].includes(a.priority)?a.priority:"medium";
+    const tags = (a.tags||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join("");
+    const newBadge = a.is_new ? `<span class="new-badge">${esc(S.new_badge)}</span>` : "";
+    const newClass = a.is_new ? " is-new" : "";
+
+    return `
+    <div class="article-card${newClass}" style="animation-delay:${i*25}ms">
+      <div class="card-top">
+        <span class="account-name">${esc(a.account_name)}</span>
+        <span class="card-date">${esc(ds)}</span>
+      </div>
+      <div class="card-title"><a href="${safeUrl(a.url)}" target="_blank" rel="noopener noreferrer">${esc(a.title)}</a></div>
+      ${a.summary?`<div class="card-summary">${esc(a.summary)}</div>`:""}
+      <div class="card-footer">
+        ${newBadge}
+        <span class="priority-badge priority-${pri}">${esc(S[pri]||pri)}</span>
+        ${tags}
+        <a class="read-link" href="${safeUrl(a.url)}" target="_blank" rel="noopener noreferrer">${esc(S.read_article)} →</a>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+init();
+</script>
+</body>
+</html>"""

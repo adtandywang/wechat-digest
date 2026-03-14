@@ -1,0 +1,414 @@
+# =============================================================
+# WeChat Digest - Configuration
+# =============================================================
+# 48 WeChat Public Accounts
+#
+# HOW TO FIND RSS FEEDS:
+# -------------------------------------------
+# 1. feeddd.org (FREE) - Visit https://feeddd.org/feed/list
+# 2. RSSHub (FREE, self-host) - https://github.com/DIYgod/RSSHub
+# 3. WeRSS (werss.app, PAID) - Most reliable
+#
+# QUICK SETUP:
+#   python setup_feeds.py
+#   (extracts biz_id from sample URLs, prints RSSHub feed URLs)
+#   Then copy the URLs into this file manually.
+#
+#   WARNING: Do NOT run setup_feeds.py --auto. PyYAML's dump
+#   will destroy all comments and formatting in this file.
+#   Use the --dry-run output and paste URLs by hand.
+# =============================================================
+
+report_periods:
+  - 1
+  - 7
+  - 30
+
+language: zh
+
+max_articles_per_account: 50
+
+request:
+  timeout: 30
+  retry_count: 3
+  retry_delay: 5
+  user_agent: "Mozilla/5.0 (compatible; WeChatDigest/1.0)"
+
+output:
+  directory: "output"
+  keep_history: false    # Don't generate timestamped copies (prevents git bloat)
+  max_history_days: 90
+
+# ================================================================
+#  ACCOUNTS
+# ================================================================
+
+accounts:
+
+  # ────────────────────────────────────────
+  #  CATALYSIS & ENERGY (催化 / 能源)
+  # ────────────────────────────────────────
+
+  - name: "催化计"
+    id: "cuihuaji"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/3ZjTGc5_jrO2mRsritdizw"
+    tags: [catalysis, chemistry]
+    priority: high
+
+  - name: "催化开天地"
+    id: "cuihua-kaitian"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/PKQ5WtVOrRDCnIQD-RPJdQ"
+    tags: [catalysis, chemistry]
+    priority: high
+
+  - name: "我为催化举大旗"
+    id: "cuihua-daqi"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/MgK-EDUYFQyUJZyb-Ym5Ug"
+    tags: [catalysis, chemistry]
+    priority: high
+
+  - name: "单原子催化与XAFS"
+    id: "sac-xafs"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/DDuGyizMJ3Nt5YLy-LGP7g"
+    tags: [catalysis, characterization]
+    priority: high
+
+  - name: "环境电化学"
+    id: "env-electrochem"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/H2bcwZCbQg_WsYPKL8h1nA"
+    tags: [electrochemistry, environment]
+    priority: high
+
+  - name: "能源学人"
+    id: "energy-scholar"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/fAFnT2FJASFTr4QIfazn-w"
+    tags: [energy, materials]
+    priority: high
+
+  - name: "新能源前线"
+    id: "new-energy-front"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/8O5JjxHj37fbjVCgPOGI4w"
+    tags: [energy, industry]
+    priority: high
+
+  - name: "清深储能"
+    id: "qingshen-energy"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/kpSydbJ2Zbj0OQfE88Qoaw"
+    tags: [energy, battery]
+    priority: medium
+
+  - name: "能源技术情报"
+    id: "energy-tech-intel"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/U-efXp4HMtVdCZJlRaej8w"
+    tags: [energy, industry]
+    priority: medium
+
+  - name: "eChemStore"
+    id: "echemstore"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/voaLAATcnm-FXK200P1XwA"
+    tags: [electrochemistry, catalysis]
+    priority: medium
+
+  - name: "MOFs在线"
+    id: "mofs-online"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/EAFF5l4zWYf4Nn78U9P2fQ"
+    tags: [materials, mof]
+    priority: medium
+
+  # ────────────────────────────────────────
+  #  MATERIALS SCIENCE (材料科学)
+  # ────────────────────────────────────────
+
+  - name: "研之成理"
+    id: "yanzhichengli"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/oTcgypBz0_ZYHc-n6BDMjA"
+    tags: [materials, chemistry]
+    priority: high
+
+  - name: "纳米人"
+    id: "nanomiren"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/bgxbpPBGsJvJf9Y65fySdQ"
+    tags: [materials, nanotechnology]
+    priority: high
+
+  - name: "材料人"
+    id: "cailiaoren"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/NanRgMNdZCEJMYbd0SKGKw"
+    tags: [materials]
+    priority: high
+
+  - name: "高分子科学前沿"
+    id: "polymer-frontier"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/yCNKcxfKGBqIKA05UGIUUg"
+    tags: [materials, polymer]
+    priority: medium
+
+  - name: "今日新材料"
+    id: "new-materials-today"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/eE8CCj6R_cBGdO2FkmSn1g"
+    tags: [materials, industry]
+    priority: medium
+
+  - name: "MaterialsViews"
+    id: "materialsviews"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/H6lIMebBi3xN1VD7vGJNYw"
+    tags: [materials, journal]
+    priority: medium
+
+  # ────────────────────────────────────────
+  #  JOURNALS & PUBLISHERS (期刊 / 出版社)
+  # ────────────────────────────────────────
+
+  - name: "自然系列"
+    id: "nature-series"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/HNbT-tpMKNC_5CxHiO1Dqg"
+    tags: [journal, multidisciplinary]
+    priority: high
+
+  - name: "RSC英国皇家化学会"
+    id: "rsc"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/0r2Uw4FVJF47Rw3Vz1oSQA"
+    tags: [journal, chemistry]
+    priority: high
+
+  - name: "CellPress全科学"
+    id: "cellpress"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/ipAtJbk_W--oTYdbCEQxzQ"
+    tags: [journal, multidisciplinary]
+    priority: high
+
+  - name: "ACS美国化学会"
+    id: "acs"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/Xtg_qPzIpEUhYa8c39rsWw"
+    tags: [journal, chemistry]
+    priority: high
+
+  - name: "Wiley威立"
+    id: "wiley"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/YxWo3RYulkYpvfffOIGGfA"
+    tags: [journal, multidisciplinary]
+    priority: medium
+
+  - name: "Advanced Portfolio"
+    id: "advanced-portfolio"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/yw5IvyxSjBBxCl6sq2_bdQ"
+    tags: [journal, materials]
+    priority: medium
+
+  - name: "BioArt"
+    id: "bioart"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/9MlPCwcPO71bYg5iIs7sRw"
+    tags: [journal, biology]
+    priority: medium
+
+  # ────────────────────────────────────────
+  #  ACADEMIC AGGREGATORS (学术资讯)
+  # ────────────────────────────────────────
+
+  - name: "X-MOL资讯"
+    id: "x-mol"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/VjbrrbcqWu9c9fra4ipUZA"
+    tags: [academic, chemistry]
+    priority: high
+
+  - name: "知社学术圈"
+    id: "zhishe"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/eYz0IGAEIB5VX0f5U2fGXw"
+    tags: [academic, multidisciplinary]
+    priority: medium
+
+  - name: "顶刊收割机"
+    id: "top-journal-harvester"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/QasOAovMfk_gG6bd5A9dMg"
+    tags: [academic, multidisciplinary]
+    priority: high
+
+  - name: "学研加"
+    id: "xueyanjia"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/899UnckXK3Mcj5RGcQWEEQ"
+    tags: [academic, tools]
+    priority: medium
+
+  - name: "科研云"
+    id: "keyan-cloud"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/EzUh7AFAZfe_0y7DRy-JXA"
+    tags: [academic, tools]
+    priority: medium
+
+  - name: "邃瞳科学云"
+    id: "suitong-cloud"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/KT6hLrz9rZVEbtKWUaH5Jg"
+    tags: [academic, tools]
+    priority: medium
+
+  - name: "微算云平台"
+    id: "weisuan-cloud"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/NLbmOAWO4F5PIqHn_KLolw"
+    tags: [academic, computation]
+    priority: medium
+
+  - name: "科研绘图指南"
+    id: "sci-illustration"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/P6VMovguIeEviKqGTqB7OA"
+    tags: [academic, tools]
+    priority: low
+
+  - name: "小黄的材料AI Lab"
+    id: "materials-ai-lab"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/qeBlacTd9IBSfYZQs9OWeA"
+    tags: [academic, ai, materials]
+    priority: medium
+
+  # ────────────────────────────────────────
+  #  SCIENCE POPULARIZATION (科普)
+  # ────────────────────────────────────────
+
+  - name: "环球科学"
+    id: "huanqiu-science"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/LNYUBjP72Vt9t534RE6Djw"
+    tags: [science, popular]
+    priority: medium
+
+  - name: "环球科学科研圈"
+    id: "huanqiu-research"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/lsQ-BMjzurTZRDH1jQ4SAw"
+    tags: [science, popular]
+    priority: medium
+
+  - name: "原理"
+    id: "principia"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/D4jzr5s4TVhLMMYCEJkQng"
+    tags: [science, popular]
+    priority: medium
+
+  # ────────────────────────────────────────
+  #  RESEARCH INTEGRITY (学术诚信)
+  # ────────────────────────────────────────
+
+  - name: "Research Integrity"
+    id: "research-integrity"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/ilUO0OoxJEJXi85JRJd80A"
+    tags: [integrity, academic]
+    priority: medium
+
+  - name: "Pubpeer"
+    id: "pubpeer"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/SJNFdWVxaWj29UWVp5WbzQ"
+    tags: [integrity, academic]
+    priority: medium
+
+  # ────────────────────────────────────────
+  #  TECH & FINANCE (科技 / 财经)
+  # ────────────────────────────────────────
+
+  - name: "华尔街见闻"
+    id: "wallstreetcn"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/bqglHqXG6XMnGVbRMjUsGA"
+    tags: [finance, macro]
+    priority: high
+
+  - name: "36氪"
+    id: "36kr"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/kL0E0NbAz6TQ2ezt5-Xydw"
+    tags: [tech, startup]
+    priority: high
+
+  - name: "虎嗅APP"
+    id: "huxiu"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/o_m9rbyClSMomOO7L3MK7A"
+    tags: [tech, business]
+    priority: high
+
+  - name: "远川科技评论"
+    id: "yuanchuan-tech"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/XANUrmEgu0-lhkOEFNS9XA"
+    tags: [tech, analysis]
+    priority: medium
+
+  - name: "远川研究所"
+    id: "yuanchuan-research"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/TMXoFXVhcAafI6_D1oXinw"
+    tags: [finance, analysis]
+    priority: medium
+
+  - name: "Global Macro Strategy"
+    id: "global-macro"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/1C-MtUuXgmO-sWhkCAOl4g"
+    tags: [finance, macro]
+    priority: medium
+
+  # ────────────────────────────────────────
+  #  COMMENTARY & PERSONAL (评论 / 个人)
+  # ────────────────────────────────────────
+
+  - name: "瓜熟迪落拉"
+    id: "guashu-diluola"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/mELXB0-z072B90xX_DGREA"
+    tags: [commentary]
+    priority: low
+
+  - name: "浩思者"
+    id: "haosizhe"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/56X2QCjrKuSzQIoOAnOshg"
+    tags: [commentary]
+    priority: low
+
+  - name: "法意观天下"
+    id: "fayi-world"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/WGCCsJqxuVFxhV-t2zaAXw"
+    tags: [politics, commentary]
+    priority: low
+
+  - name: "梵高先生的歌与故事"
+    id: "vangogh-stories"
+    rss_url: ""
+    sample_url: "https://mp.weixin.qq.com/s/cTb8a5GWc8ND9afDJHVoNg"
+    tags: [culture, personal]
+    priority: low

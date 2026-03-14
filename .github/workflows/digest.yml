@@ -1,0 +1,115 @@
+name: WeChat Digest
+
+on:
+  schedule:
+    # Every day at 8:00 AM UTC (4:00 PM Beijing Time)
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+    inputs:
+      config:
+        description: 'Config file path'
+        required: false
+        default: 'config.yaml'
+
+permissions:
+  contents: write    # Needed for gh-pages deployment
+  pages: write
+  id-token: write
+  actions: read      # Needed for gh run list / artifact download
+
+# Prevent race condition if cron and manual trigger overlap
+concurrency:
+  group: "wechat-digest"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Validate and test
+        run: |
+          python -m py_compile fetcher.py report.py main.py
+          python -m pytest tests/ -v --tb=short
+
+      # ── Cache Persistence (two-tier) ────────────────────────
+      #
+      # The article cache is essential: RSS feeds only keep ~10-20
+      # recent items, but we need 30+ days of history.
+      #
+      # Tier 1: actions/cache — fast, but evicts after 7 days idle
+      # Tier 2: GitHub Artifacts — slower, but 90-day retention
+      #
+      # No git commits needed. Main branch stays clean.
+
+      - name: "Tier 1: Restore from actions/cache"
+        uses: actions/cache@v4
+        with:
+          path: output/articles_cache.json
+          key: articles-cache-${{ github.run_id }}
+          restore-keys: |
+            articles-cache-
+
+      - name: "Tier 2: Restore from Artifacts if cache missed"
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -f output/articles_cache.json ]; then
+            echo "Cache restored from actions/cache ($(wc -c < output/articles_cache.json) bytes)"
+          else
+            echo "Actions cache missed. Trying Artifacts from last successful run..."
+            mkdir -p output
+            LAST_RUN=$(gh run list \
+              --workflow "WeChat Digest" \
+              --status success \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId' 2>/dev/null || true)
+
+            if [ -n "$LAST_RUN" ] && [ "$LAST_RUN" != "null" ]; then
+              if gh run download "$LAST_RUN" -n articles-cache -D output 2>/dev/null; then
+                echo "Restored from Artifact (run $LAST_RUN, $(wc -c < output/articles_cache.json) bytes)"
+              else
+                echo "No artifact found in run $LAST_RUN"
+              fi
+            else
+              echo "No previous successful runs found (first run?)"
+            fi
+          fi
+
+      - name: Fetch articles and generate report
+        run: |
+          python main.py --config ${{ github.event.inputs.config || 'config.yaml' }}
+
+      # ── Persist cache via Artifacts (90-day retention) ──────
+      - name: Upload cache Artifact
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: articles-cache
+          path: output/articles_cache.json
+          retention-days: 90
+          overwrite: true
+
+      # ── Deploy to GitHub Pages ──────────────────────────────
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        if: github.ref == 'refs/heads/main'
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./output
+          publish_branch: gh-pages
+          exclude_assets: 'articles_cache.json,articles_cache.json.tmp'

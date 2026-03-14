@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+
+# Temp files from atomic writes
+output/*.tmp
+
+# Timestamped report copies (keep only in output/, not tracked individually)
+# The workflow handles this via gh-pages exclude
